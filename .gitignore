@@ -1,0 +1,14 @@
+.DS_Store
+
+**/node_modules/
+**/.turbo/
+**/.next/
+**/dist/
+**/coverage/
+
+**/.env
+**/.env.*
+!**/.env.example
+
+**/*.log
+**/*.tsbuildinfo
