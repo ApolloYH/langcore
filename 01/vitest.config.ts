@@ -5,7 +5,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
-      include: ["packages/ai/src/**/*.ts", "packages/shared/src/**/*.ts"],
+      include: ["apps/api/src/**/*.ts", "packages/ai/src/**/*.ts", "packages/shared/src/**/*.ts"],
       exclude: ["**/*.test.ts"],
       thresholds: {
         branches: 80,

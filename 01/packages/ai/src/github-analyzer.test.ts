@@ -103,6 +103,32 @@ describe("analyzeGithubProject", () => {
     await expect(analyzeGithubProject(validInput, { apiKey: "test-key" })).resolves.toEqual(boundaryAnalysis);
   });
 
+  it("retries retryable Claude errors before returning a valid tool call", async () => {
+    createMock
+      .mockRejectedValueOnce(Object.assign(new Error("temporary overload"), { status: 500 }))
+      .mockResolvedValueOnce(toolResponse(validAnalysis));
+
+    await expect(
+      analyzeGithubProject(validInput, {
+        apiKey: "test-key",
+        retryDelayMs: 0
+      })
+    ).resolves.toEqual(validAnalysis);
+    expect(createMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry non-retryable Claude request errors", async () => {
+    createMock.mockRejectedValueOnce(Object.assign(new Error("bad request"), { status: 400 }));
+
+    await expect(
+      analyzeGithubProject(validInput, {
+        apiKey: "test-key",
+        retryDelayMs: 0
+      })
+    ).rejects.toThrow("bad request");
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects out-of-range numeric output", async () => {
     createMock.mockResolvedValueOnce(
       toolResponse({

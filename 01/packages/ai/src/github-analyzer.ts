@@ -17,6 +17,8 @@ export interface GithubAnalyzerOptions {
   client?: MessagesClient;
   maxTokens?: number;
   model?: string;
+  maxRetries?: number;
+  retryDelayMs?: number;
 }
 
 export async function analyzeGithubProject(
@@ -26,36 +28,43 @@ export async function analyzeGithubProject(
   const parsedInput = GithubProjectAnalysisInputSchema.parse(input);
   const client = options.client ?? new Anthropic({ apiKey: options.apiKey }).messages;
 
-  const response = await client.create({
-    max_tokens: options.maxTokens ?? 1024,
-    messages: [
-      {
-        role: "user",
-        content: [
+  const response = await createWithRetry(
+    () =>
+      client.create({
+        max_tokens: options.maxTokens ?? 1024,
+        messages: [
           {
-            type: "text",
-            text: [
-              "Analyze this GitHub project and return the result only by calling the required tool.",
-              "Use lowercase enum values exactly as defined by the tool schema.",
-              `Project data: ${JSON.stringify(parsedInput)}`
-            ].join("\n")
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: [
+                  "Analyze this GitHub project and return the result only by calling the required tool.",
+                  "Use lowercase enum values exactly as defined by the tool schema.",
+                  `Project data: ${JSON.stringify(parsedInput)}`
+                ].join("\n")
+              }
+            ]
+          }
+        ],
+        model: options.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+        thinking: { type: "disabled" },
+        tool_choice: { type: "tool", name: TOOL_NAME },
+        tools: [
+          {
+            name: TOOL_NAME,
+            description: "Return a structured GitHub project investment analysis.",
+            input_schema: zodToJsonSchema(GithubProjectAnalysisSchema, {
+              $refStrategy: "none"
+            }) as Anthropic.Tool.InputSchema
           }
         ]
-      }
-    ],
-    model: options.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
-    thinking: { type: "disabled" },
-    tool_choice: { type: "tool", name: TOOL_NAME },
-    tools: [
-      {
-        name: TOOL_NAME,
-        description: "Return a structured GitHub project investment analysis.",
-        input_schema: zodToJsonSchema(GithubProjectAnalysisSchema, {
-          $refStrategy: "none"
-        }) as Anthropic.Tool.InputSchema
-      }
-    ]
-  });
+      }),
+    {
+      maxRetries: options.maxRetries ?? 2,
+      retryDelayMs: options.retryDelayMs ?? 300
+    }
+  );
 
   const toolUse = response.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use" && block.name === TOOL_NAME
@@ -66,4 +75,46 @@ export async function analyzeGithubProject(
   }
 
   return GithubProjectAnalysisSchema.parse(toolUse.input);
+}
+
+async function createWithRetry<T>(
+  createMessage: () => Promise<T>,
+  options: { maxRetries: number; retryDelayMs: number }
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= options.maxRetries; attempt += 1) {
+    try {
+      return await createMessage();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === options.maxRetries || !isRetryableError(error)) {
+        throw error;
+      }
+
+      await delay(options.retryDelayMs * (attempt + 1));
+    }
+  }
+
+  throw lastError;
+}
+
+function isRetryableError(error: unknown) {
+  if (!(typeof error === "object" && error !== null)) {
+    return true;
+  }
+
+  const status = "status" in error && typeof error.status === "number" ? error.status : undefined;
+  if (!status) {
+    return true;
+  }
+
+  return status === 429 || status >= 500;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

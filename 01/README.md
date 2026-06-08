@@ -13,6 +13,7 @@ DevScope 是一个用于分析 GitHub 项目健康度、活跃度、风险和机
 - [x] Docker Compose 启动 PostgreSQL + pgvector
 - [x] GitHub 项目分析结构化输出 API
 - [x] Vitest TDD，Mock Anthropic SDK，覆盖率阈值 80%+
+- [x] API 层集成测试，Mock AI 层并通过 Fastify inject 验证 tRPC 接口
 
 ## 目录结构
 
@@ -61,6 +62,7 @@ cp .env.example .env
 
 ```bash
 DATABASE_URL=postgres://devscope:devscope@localhost:5432/devscope
+NEXT_PUBLIC_API_URL=http://localhost:4000
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-3-5-sonnet-latest
 ```
@@ -125,6 +127,12 @@ Web 默认监听：
 http://localhost:3000
 ```
 
+Web 默认请求 `NEXT_PUBLIC_API_URL` 指向的 API 地址；未配置时使用 `http://localhost:4000`。如果 API 临时换了端口，例如 `4012`，启动 Web 前需要设置：
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:4012 pnpm --filter @devscope/web dev
+```
+
 也可以启动整个 monorepo：
 
 ```bash
@@ -179,6 +187,7 @@ Claude 调用约束：
 - 使用 `tools[].input_schema`
 - 不使用 OpenAI 风格的 `parameters`
 - 使用 `tool_choice: { type: "tool", name: "record_github_project_analysis" }` 强制工具调用
+- 对 429、5xx、网络类临时错误做最多 2 次重试；400 等请求格式错误不重试
 - Claude 返回后再次用 `GithubProjectAnalysisSchema.parse(...)` 校验
 
 关键实现：
@@ -207,9 +216,10 @@ const response = await client.create({
 
 ```text
 packages/ai/src/github-analyzer.test.ts
+apps/api/src/app.test.ts
 ```
 
-测试重点：
+AI 层测试重点：
 
 - Mock Anthropic SDK，避免真实 Claude API 调用
 - 验证调用参数包含必填 `max_tokens`
@@ -220,6 +230,16 @@ packages/ai/src/github-analyzer.test.ts
 - 验证大写枚举值会被 Zod 拦截
 - 验证 Claude 返回额外字段会被 `.strict()` 拦截
 - 验证 Claude 没有返回 tool call 时抛出明确错误
+
+API 层测试重点：
+
+- 通过 `createApp({ logger: false })` 创建测试 Fastify 实例，不监听真实端口
+- 使用 `app.inject(...)` 调用 `/health` 和 `/trpc/github.analyze`
+- Mock `@devscope/ai` 的 `analyzeGithubProject`，避免真实 Claude API 调用
+- 验证 `github.analyze` 成功时返回 tRPC 结构化 JSON
+- 验证非法输入会在 tRPC/Zod 层返回 400，且不会调用 AI 层
+- 验证 AI 层异常会通过 API 返回 500 错误
+- 验证 CORS preflight 能正常响应
 
 运行测试：
 
@@ -236,6 +256,17 @@ thresholds: {
   lines: 80,
   statements: 80
 }
+```
+
+当前测试结果：
+
+```text
+Test Files  2 passed (2)
+Tests       13 passed (13)
+Statements 82.97%
+Branches   81.08%
+Functions  90.9%
+Lines      82.22%
 ```
 
 ## 常用验证命令
@@ -260,7 +291,7 @@ docker compose config
 
 3. TDD 不触发真实 API
 
-   测试中 mock 了 `@anthropic-ai/sdk`，只验证调用形态、解析逻辑和 Zod 校验逻辑。
+   AI 层测试 mock 了 `@anthropic-ai/sdk`，只验证调用形态、解析逻辑和 Zod 校验逻辑；API 层测试 mock 了 `@devscope/ai`，只验证 HTTP/tRPC 行为。
 
 4. pnpm 构建脚本审批
 
@@ -272,7 +303,6 @@ docker compose config
 
 ## 下一步建议
 
-- 为 `github.analyze` 增加 API 层集成测试
 - 接入 GitHub API 自动拉取仓库指标，而不是依赖调用方传入
 - 把分析结果写入 `repository_analyses`
 - 增加 Drizzle migration 管理

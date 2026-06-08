@@ -40,7 +40,7 @@ const defaultForm: FormState = {
   contributorsLast90Days: "300"
 };
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4012";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function Home() {
   const [form, setForm] = useState<FormState>(defaultForm);
