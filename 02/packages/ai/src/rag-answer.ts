@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SearchResult } from "@devscope/shared";
 
-const DEFAULT_MODEL = "claude-3-5-sonnet-latest";
+import { createAnthropicCompatibleClient, resolveModel } from "./model-config";
 
 type MessagesClient = Pick<Anthropic["messages"], "create">;
 
@@ -22,7 +22,7 @@ export async function generateRagAnswer(
     return "No matching repository context has been ingested yet.";
   }
 
-  const client = options.client ?? createAnthropicClient(options).messages;
+  const client = options.client ?? createAnthropicCompatibleClient(options).messages;
   const response = await client.create({
     max_tokens: options.maxTokens ?? 800,
     messages: [
@@ -33,19 +33,21 @@ export async function generateRagAnswer(
             type: "text",
             text: [
               "Answer the user question using only the provided repository and Hacker News context.",
-              "Cite source titles inline when useful. If context is insufficient, say what is missing.",
+              "Cite source titles inline and mention source URLs when useful. If context is insufficient, say what is missing.",
               `Question: ${query}`,
               "Context:",
               ...results.map(
                 (result, index) =>
-                  `[${index + 1}] ${result.title} (${result.sourceType}, score ${result.score.toFixed(3)}):\n${result.content}`
+                  `[${index + 1}] ${result.title} (${result.sourceType}, score ${result.score.toFixed(3)}, url ${
+                    result.sourceUrl ?? "none"
+                  }):\n${result.content}`
               )
             ].join("\n\n")
           }
         ]
       }
     ],
-    model: options.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL
+    model: resolveModel(options.model)
   });
 
   const text = response.content.find((block) => block.type === "text");
@@ -54,13 +56,4 @@ export async function generateRagAnswer(
   }
 
   return text.text;
-}
-
-function createAnthropicClient(options: Pick<RagAnswerOptions, "apiKey" | "baseURL">) {
-  const baseURL = options.baseURL ?? process.env.ANTHROPIC_BASE_URL;
-
-  return new Anthropic({
-    apiKey: options.apiKey ?? process.env.ANTHROPIC_API_KEY,
-    ...(baseURL ? { baseURL } : {})
-  });
 }

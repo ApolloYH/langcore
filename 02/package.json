@@ -8,6 +8,10 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "test": "vitest run --coverage",
+    "test:ai": "vitest run packages/ai/src",
+    "test:api": "vitest run apps/api/src",
+    "test:db": "vitest run packages/db/src",
+    "test:watch": "vitest --coverage",
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {

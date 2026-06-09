@@ -60,6 +60,7 @@ describe("generateRagAnswer", () => {
       })
     );
     expect(create.mock.calls[0]?.[0].messages[0].content[0].text).toContain("Next.js is a React framework.");
+    expect(create.mock.calls[0]?.[0].messages[0].content[0].text).toContain("https://github.com/vercel/next.js");
   });
 
   it("passes a custom Anthropic base URL when configured", async () => {

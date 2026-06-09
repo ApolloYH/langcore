@@ -11,11 +11,11 @@ export const repositoryAnalyses = pgTable("repository_analyses", {
   keyMetrics: jsonb("key_metrics").notNull(),
   riskFactors: jsonb("risk_factors").notNull(),
   opportunities: jsonb("opportunities").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }),
+  embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
-export const repositoryDocuments = pgTable("repository_documents", {
+export const repositoryDocuments = pgTable("repo_embeddings", {
   id: uuid("id").defaultRandom().primaryKey(),
   owner: text("owner").notNull(),
   repo: text("repo").notNull(),

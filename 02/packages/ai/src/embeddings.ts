@@ -1,7 +1,13 @@
 import { EMBEDDING_DIMENSIONS } from "@devscope/shared";
+import { env, pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 
 export { EMBEDDING_DIMENSIONS };
 const DEFAULT_CHUNK_TOKENS = 500;
+export const LOCAL_EMBEDDING_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+
+env.remoteHost = process.env.TRANSFORMERS_REMOTE_HOST ?? "https://hf-mirror.com";
+
+let embeddingPipelinePromise: Promise<FeatureExtractionPipeline> | null = null;
 
 export interface TextChunk {
   content: string;
@@ -34,29 +40,24 @@ export async function generateEmbedding(text: string, dimensions = EMBEDDING_DIM
     throw new Error(`Embedding dimension must be ${EMBEDDING_DIMENSIONS} to match pgvector schema.`);
   }
 
-  const vector = new Array<number>(dimensions).fill(0);
-  const tokens = text.toLowerCase().match(/[a-z0-9_+#.-]+/g) ?? [];
+  const extractor = await getEmbeddingPipeline();
+  const output = await extractor(text, {
+    pooling: "mean",
+    normalize: true
+  });
 
-  for (const token of tokens) {
-    const index = hashToken(token) % dimensions;
-    vector[index] = (vector[index] ?? 0) + 1;
+  const embedding = Array.from(output.data, (value) => Number(value.toFixed(8)));
+  if (embedding.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(`Local embedding model returned ${embedding.length} dimensions; expected ${EMBEDDING_DIMENSIONS}.`);
   }
 
-  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-  if (magnitude === 0) {
-    return vector;
-  }
-
-  return vector.map((value) => Number((value / magnitude).toFixed(8)));
+  return embedding;
 }
 
-function hashToken(token: string) {
-  let hash = 2166136261;
-
-  for (let index = 0; index < token.length; index += 1) {
-    hash ^= token.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+async function getEmbeddingPipeline() {
+  if (!embeddingPipelinePromise) {
+    embeddingPipelinePromise = pipeline("feature-extraction", LOCAL_EMBEDDING_MODEL) as Promise<FeatureExtractionPipeline>;
   }
 
-  return hash >>> 0;
+  return embeddingPipelinePromise;
 }

@@ -67,7 +67,10 @@ describe("analyzeGithubProject", () => {
     const result = await analyzeGithubProject(validInput, { apiKey: "test-key" });
 
     expect(result).toEqual(validAnalysis);
-    expect(AnthropicMock).toHaveBeenCalledWith({ apiKey: "test-key" });
+    expect(AnthropicMock).toHaveBeenCalledWith({
+      apiKey: "test-key",
+      baseURL: "https://api.deepseek.com/anthropic"
+    });
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
         max_tokens: 1024,

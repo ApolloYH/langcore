@@ -7,8 +7,9 @@ import {
 } from "@devscope/shared";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
+import { createAnthropicCompatibleClient, resolveModel } from "./model-config";
+
 const TOOL_NAME = "record_github_project_analysis";
-const DEFAULT_MODEL = "claude-3-5-sonnet-latest";
 
 type MessagesClient = Pick<Anthropic["messages"], "create">;
 
@@ -25,7 +26,7 @@ export async function analyzeGithubProject(
   options: GithubAnalyzerOptions = {}
 ): Promise<GithubProjectAnalysis> {
   const parsedInput = GithubProjectAnalysisInputSchema.parse(input);
-  const client = options.client ?? createAnthropicClient(options).messages;
+  const client = options.client ?? createAnthropicCompatibleClient(options).messages;
 
   const response = await client.create({
     max_tokens: options.maxTokens ?? 1024,
@@ -44,7 +45,7 @@ export async function analyzeGithubProject(
         ]
       }
     ],
-    model: options.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+    model: resolveModel(options.model),
     tool_choice: { type: "tool", name: TOOL_NAME },
     tools: [
       {
@@ -66,13 +67,4 @@ export async function analyzeGithubProject(
   }
 
   return GithubProjectAnalysisSchema.parse(toolUse.input);
-}
-
-function createAnthropicClient(options: Pick<GithubAnalyzerOptions, "apiKey" | "baseURL">) {
-  const baseURL = options.baseURL ?? process.env.ANTHROPIC_BASE_URL;
-
-  return new Anthropic({
-    apiKey: options.apiKey ?? process.env.ANTHROPIC_API_KEY,
-    ...(baseURL ? { baseURL } : {})
-  });
 }

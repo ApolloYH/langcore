@@ -1,4 +1,4 @@
-import { generateEmbedding, generateRagAnswer } from "@devscope/ai";
+import { buildCitations, compressSearchResults, generateEmbedding, generateRagAnswer, rewriteRagQuery } from "@devscope/ai";
 import { createPgPool, type PgPool, searchRepositoryDocuments } from "@devscope/db";
 import {
   SemanticSearchInputSchema,
@@ -16,17 +16,23 @@ export async function semanticSearch(
 ): Promise<SemanticSearchResponse> {
   const parsedInput = SemanticSearchInputSchema.parse(input);
   const pool = options.pool ?? createPgPool();
-  const queryEmbedding = await generateEmbedding(parsedInput.query);
+  const rewrittenQuery = await rewriteRagQuery(parsedInput.query);
+  const queryEmbedding = await generateEmbedding(rewrittenQuery);
   const results = await searchRepositoryDocuments(pool, {
     queryEmbedding,
+    queryText: rewrittenQuery,
     owner: parsedInput.owner,
     repo: parsedInput.repo,
-    limit: parsedInput.limit
+    limit: parsedInput.limit,
+    minSimilarity: parsedInput.minSimilarity
   });
-  const answer = await generateRagAnswer(parsedInput.query, results);
+  const compressedResults = compressSearchResults(results, parsedInput.query);
+  const answer = await generateRagAnswer(parsedInput.query, compressedResults);
 
   return {
+    rewrittenQuery,
     answer,
+    citations: buildCitations(compressedResults),
     results
   };
 }
